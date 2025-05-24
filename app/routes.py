@@ -17,6 +17,11 @@ class AnalysisResult(BaseModel):
     keywords: list[str]
     actions: list[str]
 
+class SummaryPayload(BaseModel):
+    summary: str
+    keywords: list[str]
+    actions: list[str]
+
 # Endpoint to call OpenAI (via n8n webhook)
 @router.post("/analyze")
 def analyze_transcript(req: AnalysisRequest):
@@ -40,9 +45,13 @@ def analyze_transcript(req: AnalysisRequest):
 
 # Endpoint to receive result from n8n (optional for future storage/logging)
 @router.post("/result")
-def receive_result(result: AnalysisResult):
-    # For now, just return the result to confirm reception
+async def receive_result(
+    video_id: str = Query(...),
+    payload: SummaryPayload = None
+):
     return {
-        "status": "received",
-        "data": result
+        "video_id": video_id,
+        "summary": payload.summary,
+        "keywords": payload.keywords,
+        "actions": payload.actions
     }
