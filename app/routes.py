@@ -1,5 +1,6 @@
 from fastapi import APIRouter, HTTPException, Request, Query
 from pydantic import BaseModel
+from app.storage import result_store
 import requests
 import os
 
@@ -45,13 +46,25 @@ def analyze_transcript(req: AnalysisRequest):
 
 # Endpoint to receive result from n8n (optional for future storage/logging)
 @router.post("/result")
-async def receive_result(
-    video_id: str = Query(...),
-    payload: SummaryPayload = None
-):
-    return {
-        "video_id": video_id,
-        "summary": payload.summary,
-        "keywords": payload.keywords,
-        "actions": payload.actions
+async def receive_result(video_id: str, request: Request):
+    body = await request.json()
+    summary = body.get("summary")
+    keywords = body.get("keywords")
+    actions = body.get("actions")
+
+    if not all([summary, keywords, actions]):
+        raise HTTPException(status_code=400, detail="Incomplete result data")
+
+    result_store[video_id] = {
+        "summary": summary,
+        "keywords": keywords,
+        "actions": actions
     }
+    return {"status": "success"}
+
+@router.get("/result")
+def get_result(video_id: str):
+    result = result_store.get(video_id)
+    if not result:
+        raise HTTPException(status_code=404, detail="Result not ready or video_id not found.")
+    return result
