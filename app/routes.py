@@ -64,6 +64,7 @@ async def receive_result(video_id: str, request: Request):
 
 @router.get("/result")
 def get_result(video_id: str):
+    print("📦 result_store:", result_store)
     result = result_store.get(video_id)
     if not result:
         raise HTTPException(status_code=404, detail="Result not ready or video_id not found.")
