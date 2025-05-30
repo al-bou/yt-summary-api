@@ -1,10 +1,11 @@
-from fastapi import APIRouter, HTTPException, Request, Query
+from fastapi import APIRouter, HTTPException, Request, Query, Header
 from pydantic import BaseModel
 from app.storage import result_store
 import requests
 import os
 
 router = APIRouter()
+API_SECRET = os.environ.get("API_SECRET")
 
 # Request model for analysis
 class AnalysisRequest(BaseModel):
@@ -46,7 +47,10 @@ def analyze_transcript(req: AnalysisRequest):
 
 # Endpoint to receive result from n8n (optional for future storage/logging)
 @router.post("/result")
-async def receive_result(video_id: str, request: Request):
+async def receive_result(video_id: str, request: Request, x_api_key: str = Header(...)):
+    if x_api_key != API_SECRET:
+        raise HTTPException(status_code=401, detail="Unauthorized")
+    
     body = await request.json()
     summary = body.get("summary")
     keywords = body.get("keywords")
@@ -63,7 +67,9 @@ async def receive_result(video_id: str, request: Request):
     return {"status": "success"}
 
 @router.get("/result")
-def get_result(video_id: str):
+def get_result(video_id: str, x_api_key: str = Header(...)):
+    if x_api_key != API_SECRET:
+        raise HTTPException(status_code=401, detail="Unauthorized")
     print("📦 result_store:", result_store)
     result = result_store.get(video_id)
     if not result:
