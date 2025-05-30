@@ -78,7 +78,15 @@ async def receive_result(video_id: str, request: Request, x_api_key: str = Heade
     if x_api_key != API_SECRET:
         raise HTTPException(status_code=401, detail="Unauthorized")
     
-    body = await request.json()
+    try:
+        body = await request.json()
+    except Exception as e:
+        print("[ERREUR JSON]", e)
+        body_raw = await request.body()
+        print("[CORPS REÇU]", body_raw.decode())
+        raise HTTPException(status_code=400, detail="Invalid JSON payload.")
+
+    print("[✅ BODY VALIDE]", body)
     summary = body.get("summary")
     keywords = body.get("keywords")
     actions = body.get("actions")
