@@ -3,6 +3,22 @@ from pydantic import BaseModel
 from app.storage import result_store
 import requests
 import os
+from datetime import datetime
+import logging
+from logging.handlers import RotatingFileHandler
+
+log_formatter = logging.Formatter("%(asctime)s | %(levelname)s | %(message)s")
+
+log_handler = RotatingFileHandler(
+    "analyze_calls.log",     # nom du fichier
+    maxBytes=5 * 1024 * 1024, # 5 Mo
+    backupCount=5             # nombre max de fichiers conservés
+)
+log_handler.setFormatter(log_formatter)
+
+logger = logging.getLogger("analyze_logger")
+logger.setLevel(logging.INFO)
+logger.addHandler(log_handler)
 
 router = APIRouter()
 API_SECRET = os.environ.get("API_SECRET")
@@ -26,7 +42,18 @@ class SummaryPayload(BaseModel):
 
 # Endpoint to call OpenAI (via n8n webhook)
 @router.post("/analyze")
-def analyze_transcript(req: AnalysisRequest):
+def analyze_transcript(
+    req: AnalysisRequest,
+    x_api_key: str = Header(default="anonymous"),
+    request: Request = None
+):
+    log_entry = (
+        f"API call to /analyze | IP={request.client.host} | "
+        f"API_KEY={x_api_key} | VIDEO_ID={req.video_id} | "
+        f"Transcript[60]={req.transcript[:60].replace(chr(10), ' ')}..."
+    )
+    logger.info(log_entry)
+
     webhook_url = os.environ.get("N8N_AI_WEBHOOK")
     if not webhook_url:
         raise HTTPException(status_code=500, detail="Webhook URL not configured.")
