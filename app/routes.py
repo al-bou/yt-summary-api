@@ -6,6 +6,11 @@ import os
 from datetime import datetime
 import logging
 from logging.handlers import RotatingFileHandler
+import uuid
+from datetime import timedelta
+
+# Association token → video_id (en mémoire, TTL court)
+token_store = {}  # token: {video_id: ..., expires_at: ...}
 
 log_formatter = logging.Formatter("%(asctime)s | %(levelname)s | %(message)s")
 
@@ -44,12 +49,11 @@ class SummaryPayload(BaseModel):
 @router.post("/analyze")
 def analyze_transcript(
     req: AnalysisRequest,
-    x_api_key: str = Header(default="anonymous"),
     request: Request = None
 ):
     log_entry = (
         f"API call to /analyze | IP={request.client.host} | "
-        f"API_KEY={x_api_key} | VIDEO_ID={req.video_id} | "
+        f"VIDEO_ID={req.video_id} | "
         f"Transcript[60]={req.transcript[:60].replace(chr(10), ' ')}..."
     )
     logger.info(log_entry)
@@ -68,9 +72,17 @@ def analyze_transcript(
             timeout=15
         )
         response.raise_for_status()
-        return response.json()
     except requests.RequestException as e:
         raise HTTPException(status_code=502, detail=f"Failed to contact n8n: {e}")
+
+    # 🎟 Génère un token unique
+    token = str(uuid.uuid4())
+    token_store[token] = {
+        "video_id": req.video_id,
+        "expires_at": datetime.utcnow() + timedelta(minutes=15)
+    }
+
+    return { "token": token }
 
 # Endpoint to receive result from n8n (optional for future storage/logging)
 @router.post("/result")
@@ -102,11 +114,17 @@ async def receive_result(video_id: str, request: Request, x_api_key: str = Heade
     return {"status": "success"}
 
 @router.get("/result")
-def get_result(video_id: str, x_api_key: str = Header(...)):
-    if x_api_key != API_SECRET:
-        raise HTTPException(status_code=401, detail="Unauthorized")
-    print("📦 result_store:", result_store)
+def get_result_from_token(token: str = Query(...)):
+    token_data = token_store.get(token)
+    if not token_data:
+        raise HTTPException(status_code=404, detail="Invalid or expired token")
+
+    if token_data["expires_at"] < datetime.utcnow():
+        raise HTTPException(status_code=403, detail="Token expired")
+
+    video_id = token_data["video_id"]
     result = result_store.get(video_id)
     if not result:
-        raise HTTPException(status_code=404, detail="Result not ready or video_id not found.")
+        raise HTTPException(status_code=404, detail="Result not ready or video_id not found")
+
     return result
